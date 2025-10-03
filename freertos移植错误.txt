@@ -1,0 +1,195 @@
+FreeRTOS 版本不一致（致命）
+你源文件 tasks.c/queue.c 等是 Kernel V11.1.0（2024 版）。
+但头文件 FreeRTOS.h/task.h/list.h/portable.h 是 V10.3.1。
+结果：V11 源码里用到的类型/宏（例如 configRUN_TIME_COUNTER_TYPE、SMP 相关宏等）在 V10.3.1 的头文件中不存在，直接导致编译期大量未定义/不匹配错误。
+FreeRTOSConfig.h 与 Cortex-M4F 端口不匹配（会编译失败或运行异常）
+configTICK_TYPE_WIDTH_IN_BITS 设为 TICK_TYPE_WIDTH_64_BITS，但你的 ARM_CM4F 端口只支持 16/32 位 tick。portmacro.h 会直接 #error。
+configKERNEL_INTERRUPT_PRIORITY、configMAX_SYSCALL_INTERRUPT_PRIORITY 都为 0。Cortex-M 端口明确禁止为 0，port.c 中也有 #error/断言。
+配置里开启了 ARMv8-M/TrustZone/MVE/MPU（configENABLE_TRUSTZONE=1、configRUN_FREERTOS_SECURE_ONLY=1、configENABLE_MPU=1、configENABLE_MVE=1），但你的 MCU 是 Cortex-M4F（STM32F4），根本不支持，必须关掉。
+configCPU_CLOCK_HZ 固定写成 20MHz，而你的 SystemCoreClock 实际是 168MHz（按你 SystemClock_Config 设置）。这会导致滴答定时和时基全错。
+中断向量没有路由到 FreeRTOS 端口（运行必挂）
+stm32f4xx_it.c 里 SVC_Handler/PendSV_Handler/SysTick_Handler 都是空或调用 HAL_IncTick，但 FreeRTOS 端口实现的函数名是 vPortSVCHandler/xPortPendSVHandler/xPortSysTickHandler。没有路由过去，调度器无法工作或系统 HardFault。
+FPU/编译器设置
+你的 ARM_CM4F 端口文件里有“只能在开启硬件 FPU 的情况下使用”的编译期检查（如 __TARGET_FPU_VFP）。如果工程没启用 FPU（Keil 里需要勾选硬件浮点并选择正确的 ABI），会在编译阶段报错。
+HAL 时基与 FreeRTOS Tick 冲突
+你现在 SysTick_Handler 里调用 HAL_IncTick()，但 FreeRTOS 要接管 SysTick。没处理好，会出现时间错乱、滴答重复、系统卡死等。
+如何修复（按顺序执行） A. 先统一 FreeRTOS 版本（最关键）
+
+方案1（推荐）：把 Freertosgraft_M4F/Inc/ 目录下的头文件（FreeRTOS.h、task.h、list.h、portable.h、…）替换为与当前源码一致的 V11.1.0 版本（从 2024 版官方包里取）。
+方案2：反向降级，把 Kernel 源码（tasks.c、queue.c、event_groups.c、…）换回 V10.3.1，对齐你当前的头文件版本。 二者选一，务必版本完全一致，否则永远会一堆编译错误。
+B. 修 FreeRTOSConfig.h 以适配 STM32F4（Cortex-M4F） 请把以下要点落地到 Freertosgraft_M4F/Inc/FreeRTOSConfig.h（示例宏，按需微调）：
+
+CPU/滴答
+#define configCPU_CLOCK_HZ (SystemCoreClock)
+#define configTICK_RATE_HZ 1000 // 或者 100，按需求
+#define configTICK_TYPE_WIDTH_IN_BITS TICK_TYPE_WIDTH_32_BITS
+中断优先级（基于 CMSIS __NVIC_PRIO_BITS）
+#ifndef configPRIO_BITS #define configPRIO_BITS __NVIC_PRIO_BITS #endif
+#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
+#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5 // 常见取值，保证 != 0，且 < LOWEST
+#define configKERNEL_INTERRUPT_PRIORITY (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
+#define configMAX_API_CALL_INTERRUPT_PRIORITY configMAX_SYSCALL_INTERRUPT_PRIORITY
+关闭 ARMv8-M/TrustZone/MVE/MPU
+#define configENABLE_TRUSTZONE 0
+#define configRUN_FREERTOS_SECURE_ONLY 0
+#define configENABLE_MPU 0
+#define configENABLE_MVE 0
+FPU 可保留 1：#define configENABLE_FPU 1
+Handler 安装检查
+你将采用“间接路由”，应设置：
+#define configCHECK_HANDLER_INSTALLATION 0
+C. 路由中断向量到 FreeRTOS 在 Core/Src/stm32f4xx_it.c：
+
+在文件顶部 Includes 后加上 FreeRTOS 的端口声明（声明或包含头文件后自行声明原型）：
+void vPortSVCHandler(void);
+void xPortPendSVHandler(void);
+void xPortSysTickHandler(void);
+修改三个 Handler：
+void SVC_Handler(void) { vPortSVCHandler(); }
+void PendSV_Handler(void) { xPortPendSVHandler(); }
+void SysTick_Handler(void) { // 任选其一： // 方案1：如果 HAL 的时基改到 TIM（推荐），这里只调 FreeRTOS： // xPortSysTickHandler(); // 方案2：继续用 SysTick 做 HAL 时基（不推荐，但可用），则： HAL_IncTick(); xPortSysTickHandler(); }
+D. Keil/编译器/链接设置确认
+
+工具链：此端口是给 ARMCC/ARMCLANG 的（代码里用 __asm 语法和 __TARGET_FPU_VFP），请在 Keil MDK 中使用 AC6（ARMCLANG）。
+FPU：在 Target 里启用硬件浮点（FPU：Single-precision、浮点 ABI 选 hard），否则会触发端口编译错误。
+语言标准：C99 及以上。
+包含路径：确保包含
+Freertosgraft_M4F/Inc
+Freertosgraft_M4F/port/ARM_CM4F
+Freertosgraft_M4F/port/MemMang
+源文件加入工程：
+Freertosgraft_M4F/tasks.c、queue.c、list.c、timers.c、event_groups.c、stream_buffer.c、croutine.c（如果启用协程则加）
+Freertosgraft_M4F/port/ARM_CM4F/port.c
+Freertosgraft_M4F/port/MemMang/heap_4.c（或换你想用的 heap_x.c）
+启动文件：使用你工程已有的 startup_stm32f407xx.s（已存在）
+链接脚本/闪存映射保持原样即可。
+E. HAL 时基的选择（避免和 FreeRTOS 抢 SysTick）
+
+最稳妥：把 HAL 的时基（HAL_InitTick）重定到一个定时器（比如 TIMx），让 SysTick 专属于 FreeRTOS。
+如果暂时不改，可在 SysTick_Handler 里先调用 HAL_IncTick() 再调用 xPortSysTickHandler()（如上 C 方案 2）。注意这会让 SysTick 同时承担 HAL 和 RTOS 滴答，可能影响低功耗/抖动。
+F. 其他建议
+
+configTOTAL_HEAP_SIZE 4096 一般太小，稍微复杂一点就会 malloc 失败。建议先调到 16KB/24KB，再根据 xPortGetFreeHeapSize() 调整。
+中断里调用 FreeRTOS API 时，请确保该中断优先级数值“不是最高优先级（不是 0）”，且“数值大于等于 configMAX_SYSCALL_INTERRUPT_PRIORITY 对应的编码”（即优先级不高于 max syscall prio）。否则会触发 vPortValidateInterruptPriority() 的断言。
+如果你使用 HAL_Delay()，在使用 RTOS 后请尽量用 vTaskDelay() / vTaskDelayUntil() 替代；若必须用 HAL_Delay()，要保证 HAL_IncTick 正常递增。
+一键自检清单
+
+头/源版本完全一致（V11.1.0 对 V11.1.0，或 V10.3.1 对 V10.3.1）
+FreeRTOSConfig.h:
+configCPU_CLOCK_HZ = SystemCoreClock
+TICK_TYPE = 32 bits
+优先级宏按上面公式设置，且 MAX_SYSCALL != 0
+关闭 TRUSTZONE/MVE/MPU
+CHECK_HANDLER_INSTALLATION = 0（因为用间接路由）
+stm32f4xx_it.c 路由三大 Handler 到端口函数
+启用硬件 FPU，工具链为 ARMCLANG/AC6
+SysTick 归属关系明确（RTOS 专用，或与你的 HAL 方案一致）
+按以上步骤处理后，编译期“很多错误”会一次性消失；若仍有零星错误，多半是因为某个路径/宏没对齐，逐项对照上述清单即可定位。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+一、版本一致性（必须先解决）
+
+你的源码文件是 FreeRTOS Kernel V11.1.0（2024），但头文件 FreeRTOS.h/task.h/list.h/portable.h 是 V10.3.1。
+解决方式二选一：
+统一到 V11.1.0：用 2024 官方包里的 Inc 头文件替换 Freertosgraft_M4F/Inc 下的同名文件。
+或统一降级到 V10.3.1：把 tasks.c、queue.c、timers.c、event_groups.c、stream_buffer.c 等源码换回 V10.3.1。
+版本不一致会导致大量编译错误（类型/宏缺失），是当前“很多错误”的主要根因。
+二、FreeRTOSConfig.h 不匹配（必须修）
+
+你的芯片是 Cortex-M4F（STM32F4），请按该端口修正：
+时钟与滴答
+configCPU_CLOCK_HZ 设为 SystemCoreClock（不要写死 20MHz）
+configTICK_RATE_HZ 用 1000 或 100（看需求）
+configTICK_TYPE_WIDTH_IN_BITS 设为 TICK_TYPE_WIDTH_32_BITS（不要 64 位）
+中断优先级宏（避免 0，且满足端口断言）
+使用 CMSIS 的 __NVIC_PRIO_BITS 计算映射。例如：
+configPRIO_BITS = __NVIC_PRIO_BITS
+configLIBRARY_LOWEST_INTERRUPT_PRIORITY = 15
+configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY = 5
+configKERNEL_INTERRUPT_PRIORITY = (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
+configMAX_SYSCALL_INTERRUPT_PRIORITY = (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
+configMAX_API_CALL_INTERRUPT_PRIORITY = configMAX_SYSCALL_INTERRUPT_PRIORITY
+关闭不适用于 M4 的功能
+configENABLE_TRUSTZONE = 0
+configRUN_FREERTOS_SECURE_ONLY = 0
+configENABLE_MPU = 0
+configENABLE_MVE = 0
+其它建议
+configCHECK_HANDLER_INSTALLATION = 0（你会用“间接路由”安装中断处理）
+configTOTAL_HEAP_SIZE 增大到 16KB/24KB 起步，避免一启动就 malloc 失败
+注意：configCHECK_FOR_STACK_OVERFLOW=2 已开启，你必须实现 vApplicationStackOverflowHook（详见“钩子”一节）。
+三、端口文件与内存管理（检查是否加入工程）
+
+加入并编译以下源文件：
+port/ARM_CM4F/port.c
+port/MemMang/heap_4.c（或你选用的 heap_x.c）
+核心内核源码：tasks.c、queue.c、list.c、timers.c、event_groups.c、stream_buffer.c（以及 croutine.c 如果开启协程）
+包含路径添加：
+Freertosgraft_M4F/Inc
+Freertosgraft_M4F/port/ARM_CM4F
+Freertosgraft_M4F/port/MemMang
+四、中断向量路由到 FreeRTOS（必须修）
+
+在 Core/Src/stm32f4xx_it.c：
+声明端口处理函数：vPortSVCHandler、xPortPendSVHandler、xPortSysTickHandler
+将 SVC_Handler 调到 vPortSVCHandler
+将 PendSV_Handler 调到 xPortPendSVHandler
+将 SysTick_Handler 中调用 xPortSysTickHandler
+如果让 SysTick 同时做 HAL 的时基，可在调用 xPortSysTickHandler 前保留 HAL_IncTick()；更推荐把 HAL 时基改到 TIM，这样 SysTick 专给 RTOS。
+五、编译器/FPU/启动文件（必须确认）
+
+使用 Keil MDK/AC6（ARMCLANG），并启用硬件单精度 FPU（硬浮点 ABI），否则端口会拒编。
+启动文件使用 startup_stm32f407xx.s（已有即可）。
+C 语言标准至少 C99，优化级别不限。
+六、应用钩子与断言（至少要实现栈溢出钩子）
+
+必须实现（因为 configCHECK_FOR_STACK_OVERFLOW=2）：
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskName)
+可选（若以后打开 configUSE_MALLOC_FAILED_HOOK=1）：
+void vApplicationMallocFailedHook(void)
+建议确保 configASSERT 定义合理（工程内已有一个能停机的实现）。
+七、NVIC 组优先级配置（避免端口断言）
+
+端口要求“所有优先级位都用作抢占优先级”，不能用子优先级。
+在 STM32 HAL 下，调用 HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4) 即为“全抢占位、无子优先级”，满足要求。
+八、创建任务并启动调度器（工程目前未做）
+
+在 main.c 中包含 FreeRTOS.h 和 task.h（注意：包含顺序是 FreeRTOS.h 在最前）。
+创建至少一个任务（例如 LED 闪烁），然后调用 vTaskStartScheduler()。
+启动 RTOS 后不要再用裸 while(1) 轮询；如果要延时用 vTaskDelay()，避免 HAL_Delay() 与 RTOS 冲突。
+九、HAL 时基与 FreeRTOS Tick 的关系（二选一，推荐第一种）
+
+推荐：把 HAL 的时基（HAL_InitTick）改成 TIM，让 SysTick 专供 FreeRTOS。
+或保留 SysTick 做 HAL 时基：在 SysTick_Handler 先 HAL_IncTick() 再 xPortSysTickHandler()，但可能影响低功耗与抖动。
+十、ISR 中调用 FromISR API 的优先级约束
+
+所有会调用 xQueueSendFromISR、xSemaphoreGiveFromISR 等的中断，NVIC 优先级（数值）必须“≥ MAX_SYSCALL 对应编码值”，且不能是最高优先级 0，否则 vPortValidateInterruptPriority() 会断言。
+十一、常见易错点自检
+
+FreeRTOS.h 必须在 task.h、queue.h 等 RTOS 头文件之前包含。
+configMINIMAL_STACK_SIZE 128 是“字数”不是字节；若任务里用到 printf 等，适当增大。
+所有 FreeRTOS 源/头路径在工程里只有一份，不要混用不同版本的同名文件。
+如果使用软件定时器（configUSE_TIMERS=1），确保 timers.c 参与编译。
+十二、最小化运行验证建议
+
+开机初始化时钟和 GPIO 后，创建一个低优先级任务周期性翻转 LED（vTaskDelay）。
+编译通过、下载运行后观察 LED 是否按预期闪烁；若卡死，首查中断路由与优先级配置、版本一致性与钩子断言。
+按以上清单逐项完成后，工程就是“完整”的 FreeRTOS 移植结构，能够稳定编译并运行。

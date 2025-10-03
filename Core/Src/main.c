@@ -36,7 +36,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char * pcTaskName){
 void vTaskCode1( void * pvParameters ){
     while(1){
         
-        vTaskDelay(1000);
+        vTaskDelay(100);
     }
 }
 
@@ -44,7 +44,7 @@ void vTaskCode1( void * pvParameters ){
 void vTaskCode2( void * pvParameters ){
     while(1){
         
-        vTaskDelay(1000);
+        vTaskDelay(10);
     }
 }
 
@@ -115,9 +115,10 @@ int main(void)
 
 
 
-  xTaskCreate( vTaskCode1, "Task1", 100, NULL, 1, NULL );
-  xTaskCreate( vTaskCode2, "Task2", 100, NULL, 1, NULL );
+  xTaskCreate(vTaskCode1, "Task1", 100, NULL, 1, NULL );
+  xTaskCreate(vTaskCode2, "Task2", 100, NULL, 1, NULL );
 
+  vTaskStartScheduler();
 
 
 
