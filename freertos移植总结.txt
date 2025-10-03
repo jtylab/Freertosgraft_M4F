@@ -1,0 +1,51 @@
+1.configTICK_TYPE_WIDTH_IN_BITS        TICK_TYPE_WIDTH_64_(16/32）BITS            定义 TickType_t数据类型的位宽，从而决定系统能处理的最大时间范围
+
+2.configCPU_CLOCK_HZ        (SystemCoreClock)                定义 CPU 内核的时钟频率，为系统节拍定时器等提供准确的时间基准
+
+3.configTICK_RATE_HZ       1000/100                它定义了系统的时钟节拍频率，直接影响任务调度、延时精度和系统性能
+
+4.configLIBRARY_LOWEST_INTERRUPT_PRIORITY          (   )          它的核心作用是定义系统中可用的最低中断优先级数值，并专门用于设置 FreeRTOS 内核自身所使用的中断（如 SysTick 和 PendSV）的优先级
+
+5.configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY          (   ）         用于定义 FreeRTOS 可以安全管理的最高中断优先级，从而协调中断与操作系统内核的交互
+
+6.configMAX_SYSCALL_INTERRUPT_PRIORITY          (   )          它划定了一个安全边界，明确规定了哪些中断可以安全地调用 FreeRTOS 的 API 函数，对于保障系统稳定性和中断实时性至关重要
+// 第一步：定义逻辑优先级（用户友好，基于芯片实际支持的优先级位数，如4位）
+#define configPRIO_BITS        4                                            // 优先级位数为4，共16个优先级 (0-15)
+#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY    5             // 逻辑优先级阈值，设为5
+// 第二步：转换为硬件优先级（左移对齐后用于配置寄存器）
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY  (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))  // 移位后为 5 << 4 = 80
+
+7.configMAX_API_CALL_INTERRUPT_PRIORITY           (   )           它划定了允许安全调用 FreeRTOS API 的中断优先级的最高界限 
+
+8.关闭 ARMv8-M/TrustZone/MVE/MPU
+#define configENABLE_TRUSTZONE 0
+#define configRUN_FREERTOS_SECURE_ONLY 0
+#define configENABLE_MPU 0
+#define configENABLE_MVE 0
+FPU 可保留 1：#define configENABLE_FPU 1
+
+9.Handler 安装检查
+你将采用“间接路由”，应设置：
+#define configCHECK_HANDLER_INSTALLATION 0
+
+10.修改三个 Handler ,stm32f4xx_it.c 里 SVC_Handler / PendSV_Handler / SysTick_Handler
+void vPortSVCHandler(void);
+void xPortPendSVHandler(void);
+void xPortSysTickHandler(void);
+
+11.configTOTAL_HEAP_SIZE            (    )            4096 一般太小,建议先调到 16KB/24KB,再根据 xPortGetFreeHeapSize() 调整
+
+12.​configCHECK_FOR_STACK_OVERFLOW      ( )      如果大于0则启用堆栈溢出钩子函数void vApplicationStackOverflowHook(TaskHandle_t xTask, char * pcTaskName) 需要在.c文件中重定义
+
+13.vTaskStartScheduler();           在创建任务后需要开启调度器
+
+
+
+
+
+
+
+
+
+
+
