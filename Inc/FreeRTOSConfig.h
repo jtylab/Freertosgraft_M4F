@@ -46,9 +46,6 @@
 /* Hardware description related definitions. **********************************/
 /******************************************************************************/
 
-#define configNUMBER_OF_CORES 1
-
-#define configUSE_16_BIT_TICKS 0
 /* In most cases, configCPU_CLOCK_HZ must be set to the frequency of the clock
  * that drives the peripheral used to generate the kernels periodic tick interrupt.
  * The default value is set to 20MHz and matches the QEMU demo settings.  Your
