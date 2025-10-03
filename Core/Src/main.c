@@ -19,14 +19,39 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "gpio.h"
-
+#include "FreeRTOS.h"
+#include "task.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char * pcTaskName){
+    while(1);
+}
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+void vTaskCode1( void * pvParameters ){
+    while(1){
+        
+        vTaskDelay(1000);
+    }
+}
+
+
+void vTaskCode2( void * pvParameters ){
+    while(1){
+        
+        vTaskDelay(1000);
+    }
+}
+
+
+
+
+
 
 /* USER CODE END PTD */
 
@@ -87,6 +112,14 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
+
+
+
+  xTaskCreate( vTaskCode1, "Task1", 100, NULL, 1, NULL );
+  xTaskCreate( vTaskCode2, "Task2", 100, NULL, 1, NULL );
+
+
+
 
   /* USER CODE END 2 */
 

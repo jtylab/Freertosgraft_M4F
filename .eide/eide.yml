@@ -52,7 +52,7 @@ virtualFolder:
 dependenceList: []
 outDir: build
 miscInfo:
-  uid: 5e7a3bf98a8205f36c9a2e56960870d9
+  uid: 105654039a25dc516f86a708760505b3
 targets:
   Freertosgraft_M4F:
     cppPreprocessAttrs:
@@ -67,11 +67,9 @@ targets:
         - Drivers/CMSIS/Include
         - .cmsis/include
         - MDK-ARM/RTE/_Freertosgraft_M4F
-        - Freertosgraft_M4F/port/MemMang
-        - Freertosgraft_M4F/port/ARM_CM4F
         - Freertosgraft_M4F/Inc
-        - Freertosgraft_M4F
-        - Freertosgraft_M4F/CMSIS_RTOS_V2
+        - Freertosgraft_M4F/port/ARM_CM4F
+        - Freertosgraft_M4F/port/MemMang
       libList: []
     excludeList: []
     toolchain: AC5
@@ -129,15 +127,15 @@ targets:
             - id: 1
               isChecked: true
               mem:
-                size: ""
-                startAddr: ""
+                size: "0x1C000"
+                startAddr: "0x20000000"
               noInit: false
               tag: IRAM
             - id: 2
               isChecked: true
               mem:
-                size: "0x0"
-                startAddr: "0x0"
+                size: "0x4000"
+                startAddr: "0x2001C000"
               noInit: false
               tag: IRAM
           ROM:
@@ -166,8 +164,8 @@ targets:
               isChecked: true
               isStartup: true
               mem:
-                size: ""
-                startAddr: ""
+                size: "0x80000"
+                startAddr: "0x8000000"
               tag: IROM
             - id: 2
               isChecked: true
@@ -187,14 +185,4 @@ targets:
         otherCmds: ""
         proType: 1
         speed: 8000
-      STLink:
-        address: ""
-        bin: ""
-        elFile: None
-        optionBytes: .eide/freertosgraft_m4f.st.option.bytes.ini
-        otherCmds: ""
-        proType: SWD
-        resetMode: default
-        runAfterProgram: true
-        speed: 4000
-    uploader: STLink
+    uploader: JLink
