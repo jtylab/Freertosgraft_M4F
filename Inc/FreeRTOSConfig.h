@@ -25,7 +25,7 @@
  * https://github.com/FreeRTOS
  *
  */
-
+#include "stm32f4xx.h"
 /*******************************************************************************
  * This file provides an example FreeRTOSConfig.h header file, inclusive of an
  * abbreviated explanation of each configuration item.  Online and reference
@@ -45,6 +45,8 @@
 /******************************************************************************/
 /* Hardware description related definitions. **********************************/
 /******************************************************************************/
+
+#define configNUMBER_OF_CORES 1
 
 /* In most cases, configCPU_CLOCK_HZ must be set to the frequency of the clock
  * that drives the peripheral used to generate the kernels periodic tick interrupt.
@@ -72,10 +74,10 @@
 /******************************************************************************/
 /* Scheduling behaviour related definitions. **********************************/
 /******************************************************************************/
-
+#define configSYSTICK_CLOCK_HZ                  (SystemCoreClock)
 /* configTICK_RATE_HZ sets frequency of the tick interrupt in Hz, normally
  * calculated from the configCPU_CLOCK_HZ value. */
-#define configTICK_RATE_HZ                         100
+#define configTICK_RATE_HZ                         1000
 
 /* Set configUSE_PREEMPTION to 1 to use pre-emptive scheduling.  Set
  * configUSE_PREEMPTION to 0 to use co-operative scheduling.
@@ -132,7 +134,7 @@
  *
  * Defining configTICK_TYPE_WIDTH_IN_BITS as TICK_TYPE_WIDTH_64_BITS causes
  * TickType_t to be defined (typedef'ed) as an unsigned 64-bit type. */
-#define configTICK_TYPE_WIDTH_IN_BITS              TICK_TYPE_WIDTH_64_BITS
+#define configTICK_TYPE_WIDTH_IN_BITS              TICK_TYPE_WIDTH_32_BITS
 
 /* Set configIDLE_SHOULD_YIELD to 1 to have the Idle task yield to an
  * application task if there is an Idle priority (priority 0) application task that
@@ -280,7 +282,7 @@
  * or heap_4.c are included in the build.  This value is defaulted to 4096 bytes but
  * it must be tailored to each application.  Note the heap will appear in the .bss
  * section.  See https://www.freertos.org/a00111.html. */
-#define configTOTAL_HEAP_SIZE                        4096
+#define configTOTAL_HEAP_SIZE                        ((size_t)15360)
 
 /* Set configAPPLICATION_ALLOCATED_HEAP to 1 to have the application allocate
  * the array used as the FreeRTOS heap.  Set to 0 to have the linker allocate the
@@ -316,12 +318,12 @@
  * highest interrupt priority (0).  Not supported by all FreeRTOS ports.
  * See https://www.freertos.org/RTOS-Cortex-M3-M4.html for information specific to
  * ARM Cortex-M devices. */
-#define configMAX_SYSCALL_INTERRUPT_PRIORITY     0
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY     80
 
 /* Another name for configMAX_SYSCALL_INTERRUPT_PRIORITY - the name used depends
  * on the FreeRTOS port. */
-#define configMAX_API_CALL_INTERRUPT_PRIORITY    0
-
+#define configMAX_API_CALL_INTERRUPT_PRIORITY    10
+ 
 /******************************************************************************/
 /* Hook and callback function related definitions. ****************************/
 /******************************************************************************/
@@ -569,18 +571,18 @@
  * to enable the TrustZone support in FreeRTOS ARMv8-M ports which allows the
  * non-secure FreeRTOS tasks to call the (non-secure callable) functions
  * exported from secure side. */
-#define configENABLE_TRUSTZONE            1
+#define configENABLE_TRUSTZONE            0
 
 /* If the application writer does not want to use TrustZone, but the hardware does
  * not support disabling TrustZone then the entire application (including the FreeRTOS
  * scheduler) can run on the secure side without ever branching to the non-secure side.
  * To do that, in addition to setting configENABLE_TRUSTZONE to 0, also set
  * configRUN_FREERTOS_SECURE_ONLY to 1. */
-#define configRUN_FREERTOS_SECURE_ONLY    1
+#define configRUN_FREERTOS_SECURE_ONLY    0
 
 /* Set configENABLE_MPU to 1 to enable the Memory Protection Unit (MPU), or 0
  * to leave the Memory Protection Unit disabled. */
-#define configENABLE_MPU                  1
+#define configENABLE_MPU                  0
 
 /* Set configENABLE_FPU to 1 to enable the Floating Point Unit (FPU), or 0
  * to leave the Floating Point Unit disabled. */
@@ -591,7 +593,7 @@
  * and Cortex-M85 ports as M-Profile Vector Extension (MVE) is available only on
  * these architectures. configENABLE_MVE must be left undefined, or defined to 0
  * for the Cortex-M23,Cortex-M33 and Cortex-M35P ports. */
-#define configENABLE_MVE                  1
+#define configENABLE_MVE                  0
 
 /******************************************************************************/
 /* ARMv7-M and ARMv8-M port Specific Configuration definitions. ***************/
@@ -609,7 +611,7 @@
  * The applications that use Indirect Routing must set configCHECK_HANDLER_INSTALLATION to 0.
  *
  * Defaults to 1 if left undefined. */
-#define configCHECK_HANDLER_INSTALLATION    1
+#define configCHECK_HANDLER_INSTALLATION    0
 
 /******************************************************************************/
 /* Definitions that include or exclude functionality. *************************/
